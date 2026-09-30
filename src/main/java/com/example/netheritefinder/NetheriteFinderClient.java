@@ -4,28 +4,31 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShapeRenderer;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
 public class NetheriteFinderClient implements ClientModInitializer {
     private static final int SEARCH_RADIUS = 64;
     private static final int SEARCH_INTERVAL_TICKS = 10;
     private static final Identifier HUD_ID = Identifier.fromNamespaceAndPath("netheritefinder", "direction_arrow");
+    private static final KeyMapping.Category CATEGORY =
+            KeyMapping.Category.register(Identifier.fromNamespaceAndPath("netheritefinder", "main"));
 
     private KeyMapping findKey;
     private BlockPos nearest;
@@ -34,8 +37,8 @@ public class NetheriteFinderClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        findKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
-                "key.netheritefinder.find", GLFW.GLFW_KEY_N, "category.netheritefinder"));
+        findKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.netheritefinder.find", GLFW.GLFW_KEY_N, CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (findKey.consumeClick()) {
@@ -93,12 +96,12 @@ public class NetheriteFinderClient implements ClientModInitializer {
 
         if (announce) {
             if (nearest == null) {
-                client.player.displayClientMessage(Component.literal(
-                        "§cNo netherite block found in the loaded 128×128×128 area."), false);
+                client.player.sendSystemMessage(Component.literal(
+                        "\u00a7cNo netherite block found in the loaded 128x128x128 area."));
             } else {
-                client.player.displayClientMessage(Component.literal(String.format(
-                        "§bNearest netherite block: §f%d %d %d §7(%.1f blocks away)",
-                        nearest.getX(), nearest.getY(), nearest.getZ(), Math.sqrt(nearestDistance))), false);
+                client.player.sendSystemMessage(Component.literal(String.format(
+                        "\u00a7bNearest netherite block: \u00a7f%d %d %d \u00a77(%.1f blocks away)",
+                        nearest.getX(), nearest.getY(), nearest.getZ(), Math.sqrt(nearestDistance))));
             }
         }
     }
@@ -116,24 +119,22 @@ public class NetheriteFinderClient implements ClientModInitializer {
         }
 
         // Render coordinates in this phase are camera-relative.
-        double cameraX = client.gameRenderer.getMainCamera().getPosition().x;
-        double cameraY = client.gameRenderer.getMainCamera().getPosition().y;
-        double cameraZ = client.gameRenderer.getMainCamera().getPosition().z;
+        Vec3 cam = client.gameRenderer.getMainCamera().position();
 
         AABB box = new AABB(
-                nearest.getX() - cameraX,
-                nearest.getY() - cameraY,
-                nearest.getZ() - cameraZ,
-                nearest.getX() + 1.0 - cameraX,
-                nearest.getY() + 1.0 - cameraY,
-                nearest.getZ() + 1.0 - cameraZ
+                nearest.getX() - cam.x,
+                nearest.getY() - cam.y,
+                nearest.getZ() - cam.z,
+                nearest.getX() + 1.0 - cam.x,
+                nearest.getY() + 1.0 - cam.y,
+                nearest.getZ() + 1.0 - cam.z
         ).inflate(0.003);
 
-        VertexConsumer buffer = bufferSource.getBuffer(RenderType.lines());
-        ShapeRenderer.renderLineBox(poseStack, buffer, box, 0.15f, 0.95f, 1.0f, 1.0f);
+        VertexConsumer buffer = bufferSource.getBuffer(RenderTypes.lines());
+        ShapeRenderer.renderLineBox(poseStack.last(), buffer, box, 0.15f, 0.95f, 1.0f, 1.0f);
     }
 
-    private void renderArrow(GuiGraphics graphics, DeltaTracker deltaTracker) {
+    private void renderArrow(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
         Minecraft client = Minecraft.getInstance();
         if (nearest == null || client.player == null || client.level == null) return;
         if (!client.level.hasChunkAt(nearest)) return;
@@ -151,13 +152,13 @@ public class NetheriteFinderClient implements ClientModInitializer {
         int centerX = width / 2;
         int centerY = height / 2 - 42;
 
-        graphics.pose().pushPose();
-        graphics.pose().translate(centerX, centerY, 0);
-        graphics.pose().rotate(org.joml.Matrix3x2f.rotation((float) Math.toRadians(-relative)));
-        graphics.drawString(client.font, "▲", -4, -6, 0xFF66EFFF, true);
-        graphics.pose().popPose();
+        graphics.pose().pushMatrix();
+        graphics.pose().translate((float) centerX, (float) centerY);
+        graphics.pose().rotate((float) Math.toRadians(relative));
+        graphics.text(client.font, "\u25b2", -4, -6, 0xFF66EFFF, true);
+        graphics.pose().popMatrix();
 
         String distance = String.format("%.0fm", Math.sqrt(nearestDistance));
-        graphics.drawString(client.font, distance, centerX - client.font.width(distance) / 2, centerY + 9, 0xFFFFFFFF, true);
+        graphics.text(client.font, distance, centerX - client.font.width(distance) / 2, centerY + 9, 0xFFFFFFFF, true);
     }
 }
