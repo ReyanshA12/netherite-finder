@@ -11,10 +11,7 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
-loom {
-    splitEnvironmentSourceSets()
-    mods { netheritefinder { sourceSet sourceSets.main; sourceSet sourceSets.client } }
-}
+
 processResources { inputs.property 'version', project.version; filesMatching('fabric.mod.json') { expand 'version': project.version } }
 tasks.withType(JavaCompile).configureEach { options.release = 25 }
 java { withSourcesJar(); sourceCompatibility = JavaVersion.VERSION_25; targetCompatibility = JavaVersion.VERSION_25 }
